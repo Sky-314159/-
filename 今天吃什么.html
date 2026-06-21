@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍽️ 今天吃什么 · 转盘决定</title>
+    <!-- SheetJS 用于解析 Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js">
+    </script>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --accent: #f0a500;
+            --accent-hover: #ffbb33;
+            --danger: #e74c3c;
+            --border: #2a2a4a;
+            --input-bg: #1e2a3a;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --radius: 16px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --success: #27ae60;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse at 30% 20%, rgba(240, 165, 0, 0.06) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 60%, rgba(255, 107, 107, 0.05) 0%, transparent 60%),
+                radial-gradient(ellipse at 50% 80%, rgba(100, 150, 255, 0.04) 0%, transparent 60%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            color: var(--text);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 520px;
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 24px 20px 28px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(240, 165, 0, 0.12) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .header {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+        .header .icon {
+            font-size: 40px;
+            display: block;
+            margin-bottom: 2px;
+            animation: bounce 2s ease-in-out infinite;
+        }
+        @keyframes bounce {
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+            50% {
+                transform: translateY(0);
+            }
+            70% {
+                transform: translateY(-6px);
+            }
+            85% {
+                transform: translateY(0);
+            }
+        }
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            background: linear-gradient(135deg, #f0a500, #ff6b6b, #f0a500);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 4s ease-in-out infinite;
+        }
+        @keyframes gradientShift {
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+        .header .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            letter-spacing: 0.06em;
+        }
+        .header .subtitle span {
+            background: rgba(240, 165, 0, 0.15);
+            padding: 0 10px;
+            border-radius: 20px;
+            color: #f0a500;
+            font-weight: 600;
+        }
+
+        /* 转盘区域 */
+        .wheel-wrapper {
+            position: relative;
+            width: 340px;
+            height: 340px;
+            flex-shrink: 0;
+        }
+        @media (max-width: 420px) {
+            .wheel-wrapper {
+                width: 280px;
+                height: 280px;
+            }
+        }
+        @media (max-width: 340px) {
+            .wheel-wrapper {
+                width: 240px;
+                height: 240px;
+            }
+        }
+
+        .wheel-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            transition: filter 0.3s;
+        }
+        canvas.spinning {
+            filter: brightness(1.05);
+        }
+
+        /* 指针 */
+        .pointer {
+            position: absolute;
+            top: -22px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            width: 0;
+            height: 0;
+            border-left: 18px solid transparent;
+            border-right: 18px solid transparent;
+            border-top: 30px solid #f0a500;
+            filter: drop-shadow(0 4px 8px rgba(240, 165, 0, 0.5));
+            transition: transform 0.15s;
+            cursor: default;
+        }
+        .pointer::after {
+            content: '';
+            position: absolute;
+            top: -36px;
+            left: -8px;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.7), 0 0 24px rgba(240, 165, 0, 0.6);
+        }
+        .wheel-wrapper.spinning .pointer {
+            animation: pointerVibrate 0.08s ease-in-out infinite;
+        }
+        @keyframes pointerVibrate {
+            0%,
+            100% {
+                transform: translateX(-50%) translateY(0);
+            }
+            25% {
+                transform: translateX(-50%) translateY(2px);
+            }
+            50% {
+                transform: translateX(-50%) translateY(-1px);
+            }
+            75% {
+                transform: translateX(-50%) translateY(1px);
+            }
+        }
+
+        /* 中心按钮 */
+        .center-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 35%, #fff 0%, #f5f5f5 40%, #d0d0d0 100%);
+            border: 4px solid #c0c0c0;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #333;
+            letter-spacing: 0.05em;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .center-btn:hover {
+            box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+            transform: translate(-50%, -50%) scale(1.05);
+        }
+        .center-btn:active {
+            transform: translate(-50%, -50%) scale(0.94);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+        }
+        .center-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+            animation: pulse 1s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+            }
+            50% {
+                box-shadow: 0 4px 24px rgba(240, 165, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+            }
+        }
+        @media (max-width: 420px) {
+            .center-btn {
+                width: 56px;
+                height: 56px;
+                font-size: 0.7rem;
+                border-width: 3px;
+            }
+            .pointer {
+                border-left-width: 14px;
+                border-right-width: 14px;
+                border-top-width: 24px;
+                top: -18px;
+            }
+            .pointer::after {
+                width: 12px;
+                height: 12px;
+                top: -28px;
+                left: -6px;
+            }
+        }
+
+        /* 控制区 */
+        .controls {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: relative;
+            z-index: 1;
+        }
+        .section-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.04em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* 实时显示掠过菜品 */
+        .live-preview {
+            background: rgba(240, 165, 0, 0.08);
+            border: 1px solid rgba(240, 165, 0, 0.2);
+            border-radius: 30px;
+            padding: 8px 16px;
+            text-align: center;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.1s;
+        }
+        .live-preview .highlight {
+            color: #fff;
+            font-weight: 600;
+            background: rgba(240, 165, 0, 0.2);
+            padding: 2px 12px;
+            border-radius: 20px;
+            min-width: 40px;
+        }
+        .live-preview .merchant-tag {
+            color: #ffbb33;
+            font-size: 0.85rem;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .action-row input {
+            flex: 1;
+            min-width: 120px;
+            padding: 10px 14px;
+            border-radius: 22px;
+            border: 2px solid var(--border);
+            background: var(--input-bg);
+            color: var(--text);
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.2s;
+            letter-spacing: 0.03em;
+        }
+        .action-row input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(240, 165, 0, 0.1);
+        }
+        .action-row input::placeholder {
+            color: #666;
+        }
+        .btn {
+            padding: 10px 18px;
+            border-radius: 22px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .btn-add {
+            background: var(--accent);
+            color: #1a1a2e;
+        }
+        .btn-add:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(240, 165, 0, 0.35);
+        }
+        .btn-add:active {
+            transform: scale(0.96);
+        }
+        .btn-import {
+            background: var(--success);
+            color: #fff;
+            padding: 10px 16px;
+        }
+        .btn-import:hover {
+            background: #2ecc71;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(39, 174, 96, 0.4);
+        }
+        .btn-import:active {
+            transform: scale(0.96);
+        }
+        .btn-reset {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1.5px solid var(--border);
+            font-weight: 500;
+        }
+        .btn-reset:hover {
+            border-color: #888;
+            color: #fff;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        #excelFileInput {
+            display: none;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.65);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease-out;
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        .modal {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 28px 24px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--border);
+            animation: popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 360px;
+            width: 90%;
+        }
+        @keyframes popIn {
+            from {
+                transform: scale(0.7);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        .modal .emoji-big {
+            font-size: 60px;
+            display: block;
+            animation: resultBounce 0.6s ease-out;
+        }
+        @keyframes resultBounce {
+            0% {
+                transform: scale(0);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.3);
+            }
+            70% {
+                transform: scale(0.9);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        .modal h2 {
+            font-size: 1.3rem;
+            margin: 8px 0;
+            color: #f0a500;
+        }
+        .modal .result-dish {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.05em;
+            margin: 6px 0 4px;
+        }
+        .modal .result-merchant {
+            font-size: 1rem;
+            color: #ffbb33;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+        .modal .btn-close {
+            background: var(--accent);
+            color: #1a1a2e;
+            padding: 10px 30px;
+            border-radius: 22px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+        }
+        .modal .btn-close:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 4px 14px rgba(240, 165, 0, 0.4);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #333;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            z-index: 200;
+            opacity: 0;
+            transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+            letter-spacing: 0.03em;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .toast.success {
+            background: #27ae60;
+        }
+        .toast.warning {
+            background: #e67e22;
+        }
+
+        @media (max-width: 420px) {
+            .container {
+                padding: 16px 10px 20px;
+                gap: 14px;
+                border-radius: 18px;
+            }
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            .header .icon {
+                font-size: 30px;
+            }
+            .action-row input {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+            .btn {
+                padding: 8px 14px;
+                font-size: 0.78rem;
+            }
+            .btn-add,
+            .btn-import {
+                padding: 8px 14px;
+            }
+            .modal .result-dish {
+                font-size: 1.3rem;
+            }
+            .modal .result-merchant {
+                font-size: 0.9rem;
+            }
+            .live-preview {
+                font-size: 0.85rem;
+                padding: 6px 12px;
+                min-height: 38px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <span class="icon">🍽️</span>
+            <h1>今天吃什么</h1>
+            <span class="subtitle">转盘决定 · <span>掠过即见</span></span>
+        </div>
+
+        <div class="wheel-wrapper" id="wheelWrapper">
+            <div class="pointer" id="pointerEl"></div>
+            <div class="wheel-container">
+                <canvas id="wheelCanvas" width="400" height="400"></canvas>
+                <button class="center-btn" id="centerBtn" title="点击开始抽奖">开始<br>抽奖</button>
+            </div>
+        </div>
+
+        <div class="controls">
+            <!-- 实时显示掠过菜品 -->
+            <div class="live-preview" id="livePreview">
+                <span>🎯 当前掠过：</span>
+                <span class="highlight" id="liveDishName">—</span>
+                <span class="merchant-tag" id="liveMerchantName"></span>
+            </div>
+
+            <div class="action-row">
+                <input type="text" id="dishInput" placeholder="输入新菜品名称（如：烤冷面）" maxlength="20">
+                <button class="btn btn-add" id="btnAdd">➕ 添加</button>
+                <button class="btn btn-import" id="btnImport">📥 导入Excel</button>
+            </div>
+            <button class="btn btn-reset" id="btnReset">🔄 恢复默认菜单</button>
+
+            <input type="file" id="excelFileInput" accept=".xlsx,.xls">
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay" style="display:none;">
+        <div class="modal">
+            <span class="emoji-big">🎉</span>
+            <h2>恭喜中奖！</h2>
+            <div class="result-dish" id="resultDish"></div>
+            <div class="result-merchant" id="resultMerchant"></div>
+            <p style="color:#b0b0b0;font-size:0.85rem;margin-bottom:12px;">今天就吃这个吧~</p>
+            <button class="btn-close" id="btnClose">好嘞！</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        (function() {
+            // ==================== DOM 元素 ====================
+            const canvas = document.getElementById('wheelCanvas');
+            const ctx = canvas.getContext('2d');
+            const wheelWrapper = document.getElementById('wheelWrapper');
+            const centerBtn = document.getElementById('centerBtn');
+            const dishInput = document.getElementById('dishInput');
+            const btnAdd = document.getElementById('btnAdd');
+            const btnImport = document.getElementById('btnImport');
+            const excelFileInput = document.getElementById('excelFileInput');
+            const btnReset = document.getElementById('btnReset');
+            const overlay = document.getElementById('overlay');
+            const resultDish = document.getElementById('resultDish');
+            const resultMerchant = document.getElementById('resultMerchant');
+            const btnClose = document.getElementById('btnClose');
+            const toast = document.getElementById('toast');
+            const liveDishName = document.getElementById('liveDishName');
+            const liveMerchantName = document.getElementById('liveMerchantName');
+
+            // ==================== 默认菜品（带商家） ====================
+            const DEFAULT_ITEMS = [
+                // 张大厨辣椒炒肉
+                { merchant: '张大厨辣椒炒肉', name: '临沂炒鸡' },
+                { merchant: '张大厨辣椒炒肉', name: '孜然牛肉饭' },
+                { merchant: '张大厨辣椒炒肉', name: '小炒黄牛肉' },
+                { merchant: '张大厨辣椒炒肉', name: '辣椒炒肉' },
+                { merchant: '张大厨辣椒炒肉', name: '回锅肉' },
+                { merchant: '张大厨辣椒炒肉', name: '湘味双拼' },
+                { merchant: '张大厨辣椒炒肉', name: '卫龙热狗鸡蛋饭' },
+                { merchant: '张大厨辣椒炒肉', name: '卫龙鸡蛋饭' },
+                { merchant: '张大厨辣椒炒肉', name: '热狗鸡蛋饭' },
+                { merchant: '张大厨辣椒炒肉', name: '鱼酸菜饭' },
+                { merchant: '张大厨辣椒炒肉', name: '剁椒鸡蛋饭' },
+                { merchant: '张大厨辣椒炒肉', name: '外婆菜饭' },
+                { merchant: '张大厨辣椒炒肉', name: '孜然腊肠饭' },
+                { merchant: '张大厨辣椒炒肉', name: '全菜双拼' },
+                { merchant: '张大厨辣椒炒肉', name: '干锅花菜' },
+                { merchant: '张大厨辣椒炒肉', name: '麻辣香锅' },
+                { merchant: '张大厨辣椒炒肉', name: '油醋爆蛋' },
+                { merchant: '张大厨辣椒炒肉', name: '烟笋炒腊肉' },
+                { merchant: '张大厨辣椒炒肉', name: '擂椒皮蛋' },
+                { merchant: '张大厨辣椒炒肉', name: '湘辣鸡肚' },
+                { merchant: '张大厨辣椒炒肉', name: '湘西外婆菜' },
+                { merchant: '张大厨辣椒炒肉', name: '肉沫酸豆角' },
+                { merchant: '张大厨辣椒炒肉', name: '土匪猪肝' },
+                { merchant: '张大厨辣椒炒肉', name: '肉末茄子' },
+                { merchant: '张大厨辣椒炒肉', name: '辣子鸡' },
+                { merchant: '张大厨辣椒炒肉', name: '双椒金钱蛋' },
+                // 墨小朵小锅焖面
+                { merchant: '墨小朵小锅焖面', name: '蟹黄拌面' },
+                { merchant: '墨小朵小锅焖面', name: '特色冰镇大冷面（荞麦）' },
+                { merchant: '墨小朵小锅焖面', name: '肉沫薯条焖面' },
+                { merchant: '墨小朵小锅焖面', name: '火腿煎鸡蛋焖面' },
+                { merchant: '墨小朵小锅焖面', name: '小酥肉薯条焖面' },
+                { merchant: '墨小朵小锅焖面', name: '五花肉薯条焖面' },
+                { merchant: '墨小朵小锅焖面', name: '红烧肉土豆焖面' },
+                { merchant: '墨小朵小锅焖面', name: '奥尔良鸡块薯条焖面' },
+                { merchant: '墨小朵小锅焖面', name: '鱼香肉丝焖面' },
+                { merchant: '墨小朵小锅焖面', name: '大块排骨玉米土豆焖面' },
+                { merchant: '墨小朵小锅焖面', name: '时蔬焖面' },
+                { merchant: '墨小朵小锅焖面', name: '番茄煎蛋焖面' },
+                { merchant: '墨小朵小锅焖面', name: '五花肉蔬菜薯条焖面' },
+                { merchant: '墨小朵小锅焖面', name: '小酥肉茄条焖面' },
+                { merchant: '墨小朵小锅焖面', name: '奥尔良香酥鸡焖面' },
+                { merchant: '墨小朵小锅焖面', name: '辣白菜五花肉焖面' },
+                { merchant: '墨小朵小锅焖面', name: '五花肉酸菜焖面' },
+                { merchant: '墨小朵小锅焖面', name: '肉沫茄条焖面' },
+                { merchant: '墨小朵小锅焖面', name: '地三鲜焖面' },
+                { merchant: '墨小朵小锅焖面', name: '薯条玉米块焖面' },
+                { merchant: '墨小朵小锅焖面', name: '韩式五花肉焖面' },
+                { merchant: '墨小朵小锅焖面', name: '奥尔良鸡块茄条焖面' },
+                // 小街胡同牛杂面
+                { merchant: '小街胡同牛杂面', name: '招牌小街牛杂面' },
+                { merchant: '小街胡同牛杂面', name: '麻辣拌面+辣肉+煎蛋' },
+                { merchant: '小街胡同牛杂面', name: '单人套餐（火鸡面+卤蛋+狮子头+豆扣2个）' },
+                { merchant: '小街胡同牛杂面', name: '火鸡面（卤蛋卤肠）+宜宾燃面（兰花干煎蛋）' },
+                { merchant: '小街胡同牛杂面', name: '麻辣猪猪拌面' },
+                { merchant: '小街胡同牛杂面', name: '小街油泼面' },
+                { merchant: '小街胡同牛杂面', name: '宜宾燃面' },
+                { merchant: '小街胡同牛杂面', name: '麻酱辣肉拌面' },
+                { merchant: '小街胡同牛杂面', name: '小街辣肉汤面' },
+                { merchant: '小街胡同牛杂面', name: '小街蔬菜面' },
+                { merchant: '小街胡同牛杂面', name: '麻酱鸡丝拌面' },
+                { merchant: '小街胡同牛杂面', name: '肉沫酸豆角拌面' },
+                { merchant: '小街胡同牛杂面', name: '小街火鸡面' },
+                { merchant: '小街胡同牛杂面', name: '招牌肉沫炸酱' },
+                { merchant: '小街胡同牛杂面', name: '爽口拌面（凉）' },
+                { merchant: '小街胡同牛杂面', name: '焦香鸡腿拌面' },
+                { merchant: '小街胡同牛杂面', name: '小街鸡丝汤面' },
+                { merchant: '小街胡同牛杂面', name: '麻辣鸡丝拌面' },
+                { merchant: '小街胡同牛杂面', name: '焦香鸡腿汤面' },
+                { merchant: '小街胡同牛杂面', name: '小街金牌双拼面' },
+                { merchant: '小街胡同牛杂面', name: '肉沫酸豆角汤面' },
+                { merchant: '小街胡同牛杂面', name: '小街肉沫汤面' },
+                { merchant: '小街胡同牛杂面', name: '小街鸡排汤面' },
+                { merchant: '小街胡同牛杂面', name: '小街麻将拌面' },
+                { merchant: '小街胡同牛杂面', name: '麻将鸡排拌面' },
+                { merchant: '小街胡同牛杂面', name: '麻将肉沫拌面' },
+                { merchant: '小街胡同牛杂面', name: '麻辣肉沫拌面' },
+                { merchant: '小街胡同牛杂面', name: '小街火鸡拌面' },
+                { merchant: '小街胡同牛杂面', name: '小街牛肉面+煎蛋' },
+                { merchant: '小街胡同牛杂面', name: '辣肉拌面+煎蛋' },
+                { merchant: '小街胡同牛杂面', name: '麻酱鸡丝拌面+煎蛋' },
+                { merchant: '小街胡同牛杂面', name: '油泼面+肉沫（干捞肉酱）+辣肉条（一根）' },
+                { merchant: '小街胡同牛杂面', name: '燃面+酸豆角+豆扣两个' },
+                { merchant: '小街胡同牛杂面', name: '招牌小街牛杂面+辣肉' },
+                { merchant: '小街胡同牛杂面', name: '火鸡面+辣肉条（一根）+豆扣一个' },
+                { merchant: '小街胡同牛杂面', name: '燃面+牛杂+豆蔻两个' },
+                { merchant: '小街胡同牛杂面', name: '招牌小街牛杂面+鸡排' },
+                { merchant: '小街胡同牛杂面', name: '招牌小街牛杂面+煎蛋' },
+                { merchant: '小街胡同牛杂面', name: '牛杂面+狮子头+豆扣两个' },
+                { merchant: '小街胡同牛杂面', name: '小街爽口拌面+卤蛋+豆扣两个' },
+                { merchant: '小街胡同牛杂面', name: '肉沫炸酱面+狮子头+豆扣两个' },
+                { merchant: '小街胡同牛杂面', name: '蔬菜面+狮子头+豆扣两个' },
+                // 首玺烧肉饭
+                { merchant: '首玺烧肉饭', name: '五花肉拌饭' },
+                { merchant: '首玺烧肉饭', name: '金枪鱼海苔拌饭' },
+                { merchant: '首玺烧肉饭', name: '金枪鱼拌饭' },
+                { merchant: '首玺烧肉饭', name: '梅肉拌饭' },
+                { merchant: '首玺烧肉饭', name: '蔬菜拌饭' },
+                { merchant: '首玺烧肉饭', name: '黑椒烤鸡肉芝士饭' },
+                { merchant: '首玺烧肉饭', name: '意式肉酱土豆泥芝士饭' },
+                { merchant: '首玺烧肉饭', name: '番茄烤鸡肉芝士饭' },
+                { merchant: '首玺烧肉饭', name: '首玺猪排饭' },
+                { merchant: '首玺烧肉饭', name: '烧五花肉饭' },
+                { merchant: '首玺烧肉饭', name: '首玺鸡排饭' },
+                { merchant: '首玺烧肉饭', name: '烧牛肉饭' },
+                { merchant: '首玺烧肉饭', name: '首玺公瑾爆蛋饭' },
+                // 西北风味
+                { merchant: '西北风味', name: '酸菜牛肉拉面' },
+                { merchant: '西北风味', name: '牛肉刀削面' },
+                { merchant: '西北风味', name: '红烧牛肉拉面' },
+                { merchant: '西北风味', name: '牛肉炒刀削面' },
+                { merchant: '西北风味', name: '青菜拉面' },
+                { merchant: '西北风味', name: '牛肉拉面' },
+                { merchant: '西北风味', name: '干煸炒面' },
+                { merchant: '西北风味', name: '鸡腿抓饭' },
+                { merchant: '西北风味', name: '番茄鸡蛋盖饭' },
+                { merchant: '西北风味', name: '葱油拌面' },
+                { merchant: '西北风味', name: '大盘鸡拌面' },
+                { merchant: '西北风味', name: '孜然牛肉盖饭' },
+                { merchant: '西北风味', name: '特色风味拌面' },
+                { merchant: '西北风味', name: '葱爆牛肉盖饭' },
+                { merchant: '西北风味', name: '土豆烧牛肉盖饭' },
+                { merchant: '西北风味', name: '番茄鸡蛋拌面' },
+                { merchant: '西北风味', name: '大盘鸡盖饭' },
+                { merchant: '西北风味', name: '葱爆牛肉拌面' },
+                { merchant: '西北风味', name: '土豆烧牛肉拌面' },
+                { merchant: '西北风味', name: '牛肉炒饭' },
+                { merchant: '西北风味', name: '蛋炒饭' },
+                { merchant: '西北风味', name: '扬州炒饭' },
+                { merchant: '西北风味', name: '酸菜牛肉炒饭' },
+                // 咖喱旋风烤鸭饭脆皮鸡饭
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '脆皮咖喱鸡饭' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '孜然烤肉咖喱饭' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '经典炸鸡块咖喱饭' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '京味烤鸭咖喱饭' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '旋风蛋咖喱脆皮鸡饭' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '全蔬旋风蛋咖喱饭' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '麻辣吊炉烤肉' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '单点烤鸭' },
+                { merchant: '咖喱旋风烤鸭饭脆皮鸡饭', name: '麻辣白斩鸡+米饭' },
+                // 壹雷湘湖南下饭菜水煮肉片
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '水煮小酥肉+米饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '水煮肉片+米饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '水煮鱼片+米饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '东北大饭包' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '招牌小炒肉拼炒三丝饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '招牌腊肠饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '招牌辣子鸡饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '招牌蜀香鸡' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '爆炒三丝饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '湘香油豆腐饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '擂椒皮蛋茄子饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '香干鲜笋饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '农家一锅香饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '湘西回锅肉饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '湘味娃娃菜饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '麻婆豆腐饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '肉沫茄子饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '香菇卤肉饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '椒湘辣子鸡饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '辣子鸡拼麻婆豆腐饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '小炒肉拼炒三丝饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '辣子鸡拼炒三丝饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '农家一锅香拼肉沫茄子饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '擂椒皮蛋茄子拼炒三丝饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '娃娃菜拼爆炒三丝饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '娃娃菜拼麻婆豆腐' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '麻婆豆腐拼爆炒三丝饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '招牌辣子鸡拼香干鲜笋饭' },
+                { merchant: '壹雷湘湖南下饭菜水煮肉片', name: '肉沫茄子拼香菇卤肉饭' },
+                // 川都臊子面
+                { merchant: '川都臊子面', name: '打卤面' },
+                { merchant: '川都臊子面', name: '剁椒肉酱拌面' },
+                { merchant: '川都臊子面', name: '招牌肉沫干拌面' },
+                { merchant: '川都臊子面', name: '招牌肉酱拌面' },
+                { merchant: '川都臊子面', name: '番茄鸡蛋面' },
+                { merchant: '川都臊子面', name: '凉拌面' },
+                { merchant: '川都臊子面', name: '清汤面' },
+                { merchant: '川都臊子面', name: '油泼面' },
+                { merchant: '川都臊子面', name: '特色肉酱拌面' },
+                { merchant: '川都臊子面', name: '特色干拌面' },
+                { merchant: '川都臊子面', name: '香菇鸡丝面' },
+                { merchant: '川都臊子面', name: '牛腩面' },
+                { merchant: '川都臊子面', name: '麻辣面' },
+                { merchant: '川都臊子面', name: '鸡排面' },
+                { merchant: '川都臊子面', name: '骨汤面' },
+                { merchant: '川都臊子面', name: '葱油拌面' },
+                { merchant: '川都臊子面', name: '特色臊子面' },
+                { merchant: '川都臊子面', name: '麻将拌面' },
+                { merchant: '川都臊子面', name: '煎蛋面' },
+                { merchant: '川都臊子面', name: '特色肉沫拌面' },
+                { merchant: '川都臊子面', name: '金牌炸酱面' },
+                { merchant: '川都臊子面', name: '鸡蛋菠萝炒面' },
+                { merchant: '川都臊子面', name: '尖椒肉丝炒面' },
+                { merchant: '川都臊子面', name: '火腿鸡蛋炒面' },
+                { merchant: '川都臊子面', name: '肉片鸡蛋炒面' },
+                { merchant: '川都臊子面', name: '青菜炒面' },
+                { merchant: '川都臊子面', name: '番茄鸡蛋炒刀削面' },
+                { merchant: '川都臊子面', name: '煎蛋炒面' },
+                { merchant: '川都臊子面', name: '羊肉炒面' },
+                { merchant: '川都臊子面', name: '牛腩炒面' },
+                { merchant: '川都臊子面', name: '肉丝炒面' },
+                { merchant: '川都臊子面', name: '火腿炒面' },
+                { merchant: '川都臊子面', name: '鱼香肉丝炒面' },
+                { merchant: '川都臊子面', name: '鱿鱼炒面' },
+                // 等饭少年铁板厨房
+                { merchant: '等饭少年铁板厨房', name: '爆款公瑾爆蛋' },
+                { merchant: '等饭少年铁板厨房', name: '经典黑椒鸡煲饭' },
+                { merchant: '等饭少年铁板厨房', name: '经典黑椒牛排饭' },
+                { merchant: '等饭少年铁板厨房', name: '经典黑椒猪排饭' },
+                { merchant: '等饭少年铁板厨房', name: '经典黑椒鸡排饭' }
+            ];
+
+            // ==================== 数据状态 ====================
+            const STORAGE_KEY = 'foodWheelDishes_v5';
+            const SPIN_COUNT_KEY = 'foodWheelSpinCount_v1';
+            const MAX_DISHES = 1000;
+
+            let dishes = [];
+            let spinCount = 0;
+            let currentRotation = 0;
+            let isSpinning = false;
+            let animationId = null;
+            let toastTimer = null;
+
+            // ==================== 颜色生成 ====================
+            function getColorForIndex(i) {
+                const goldenRatio = 0.618033988749895;
+                const hue = (i * 360 * goldenRatio) % 360;
+                return `hsl(${hue}, 70%, 55%)`;
+            }
+
+            // ==================== 存储 ====================
+            function saveDishes() {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(dishes));
+                } catch (e) {
+                    showToast('⚠️ 无法保存数据', 'warning');
+                }
+            }
+
+            function loadDishes() {
+                try {
+                    const stored = localStorage.getItem(STORAGE_KEY);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            dishes = parsed.map((d, i) => ({
+                                id: d.id || generateId(),
+                                merchant: d.merchant || '自定义',
+                                name: d.name || ('菜品' + (i + 1)),
+                                color: d.color || getColorForIndex(i),
+                                lastSelectedSpinIndex: d.lastSelectedSpinIndex ?? -1,
+                            }));
+                            return;
+                        }
+                    }
+                } catch (e) {}
+                dishes = DEFAULT_ITEMS.map((item, idx) => ({
+                    id: generateId(),
+                    merchant: item.merchant,
+                    name: item.name,
+                    color: getColorForIndex(idx),
+                    lastSelectedSpinIndex: -1,
+                }));
+                saveDishes();
+            }
+
+            function loadSpinCount() {
+                try {
+                    const stored = localStorage.getItem(SPIN_COUNT_KEY);
+                    spinCount = stored ? parseInt(stored, 10) || 0 : 0;
+                } catch (e) {
+                    spinCount = 0;
+                }
+            }
+
+            function saveSpinCount() {
+                try {
+                    localStorage.setItem(SPIN_COUNT_KEY, spinCount.toString());
+                } catch (e) {}
+            }
+
+            function generateId() {
+                return 'dish_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            }
+
+            // ==================== Toast ====================
+            function showToast(message, type = '') {
+                if (toastTimer) clearTimeout(toastTimer);
+                toast.textContent = message;
+                toast.className = 'toast ' + type + ' show';
+                toastTimer = setTimeout(() => {
+                    toast.classList.remove('show');
+                    toast.className = 'toast';
+                }, 2500);
+            }
+
+            // ==================== 更新掠过显示 ====================
+            function updateLivePreview(rotationRad) {
+                if (!dishes.length) {
+                    liveDishName.textContent = '—';
+                    liveMerchantName.textContent = '';
+                    return;
+                }
+                const n = dishes.length;
+                const arcSize = (2 * Math.PI) / n;
+                // 指针方向固定为 -PI/2 (12点钟方向)
+                const pointerAngle = -Math.PI / 2;
+                // 计算相对于旋转起始的偏移
+                let angle = (pointerAngle - rotationRad + 2 * Math.PI) % (2 * Math.PI);
+                let index = Math.floor(angle / arcSize) % n;
+                if (index < 0) index += n;
+                const dish = dishes[index];
+                liveDishName.textContent = dish.name;
+                if (dish.merchant && dish.merchant !== '自定义') {
+                    liveMerchantName.textContent = ' 🏪 ' + dish.merchant;
+                } else {
+                    liveMerchantName.textContent = '';
+                }
+            }
+
+            // 重置显示为占位符
+            function resetLivePreview() {
+                liveDishName.textContent = '—';
+                liveMerchantName.textContent = '';
+            }
+
+            // ==================== 绘制转盘 ====================
+            function drawWheel(rotationRad) {
+                const w = canvas.width;
+                const h = canvas.height;
+                const cx = w / 2;
+                const cy = h / 2;
+                const radius = w / 2 - 12;
+
+                ctx.clearRect(0, 0, w, h);
+                const n = dishes.length;
+                if (n === 0) {
+                    drawEmptyWheel(cx, cy, radius);
+                    return;
+                }
+
+                const arcSize = (2 * Math.PI) / n;
+
+                // 外圈装饰
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius + 8, 0, 2 * Math.PI);
+                ctx.fillStyle = '#2c2c3e';
+                ctx.fill();
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.restore();
+
+                // 小灯泡
+                const bulbCount = Math.min(Math.max(n * 3, 20), 80);
+                for (let i = 0; i < bulbCount; i++) {
+                    const angle = (i / bulbCount) * 2 * Math.PI;
+                    const bx = cx + (radius + 4) * Math.cos(angle);
+                    const by = cy + (radius + 4) * Math.sin(angle);
+                    ctx.beginPath();
+                    ctx.arc(bx, by, 3, 0, 2 * Math.PI);
+                    if (i % 3 === 0) ctx.fillStyle = '#ffeaa7';
+                    else if (i % 3 === 1) ctx.fillStyle = '#ffbe76';
+                    else ctx.fillStyle = '#ff9f43';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+
+                // 扇区
+                for (let i = 0; i < n; i++) {
+                    const startAngle = rotationRad + i * arcSize;
+                    const endAngle = startAngle + arcSize;
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.arc(cx, cy, radius, startAngle, endAngle);
+                    ctx.closePath();
+                    ctx.fillStyle = dishes[i].color;
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // 光泽
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.arc(cx, cy, radius, startAngle, endAngle);
+                    ctx.closePath();
+                    const grad = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.08)');
+                    grad.addColorStop(0.5, 'rgba(255,255,255,0.02)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0.12)');
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // 文字（只显示菜品名）
+                let fontSize = 12;
+                if (n > 30) fontSize = 10;
+                if (n > 50) fontSize = 8;
+                if (n > 80) fontSize = 7;
+                if (n > 120) fontSize = 6;
+                if (n > 180) fontSize = 5;
+                if (n > 250) fontSize = 4.5;
+                if (n > 350) fontSize = 4;
+
+                for (let i = 0; i < n; i++) {
+                    const midAngle = rotationRad + i * arcSize + arcSize / 2;
+                    const textRadius = radius * 0.66;
+                    const tx = cx + textRadius * Math.cos(midAngle);
+                    const ty = cy + textRadius * Math.sin(midAngle);
+
+                    ctx.save();
+                    ctx.translate(tx, ty);
+                    let textAngle = midAngle + Math.PI / 2;
+                    const normalizedMidAngle = ((midAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+                    if (normalizedMidAngle > Math.PI / 2 && normalizedMidAngle < 3 * Math.PI / 2) {
+                        textAngle += Math.PI;
+                    }
+                    ctx.rotate(textAngle);
+
+                    ctx.font = `bold ${fontSize}px "PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif`;
+                    ctx.fillStyle = '#fff';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                    ctx.shadowBlur = 3;
+                    ctx.shadowOffsetX = 1;
+                    ctx.shadowOffsetY = 1;
+
+                    let displayName = dishes[i].name;
+                    const maxWidth = radius * 0.4;
+                    if (ctx.measureText(displayName).width > maxWidth) {
+                        while (ctx.measureText(displayName + '…').width > maxWidth && displayName.length > 1) {
+                            displayName = displayName.slice(0, -1);
+                        }
+                        displayName += '…';
+                    }
+                    ctx.fillText(displayName, 0, 0);
+                    ctx.restore();
+                }
+
+                // 内圈装饰
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 0.28, 0, 2 * Math.PI);
+                const innerGrad = ctx.createRadialGradient(cx, cy, radius * 0.05, cx, cy, radius * 0.28);
+                innerGrad.addColorStop(0, '#f5f5f5');
+                innerGrad.addColorStop(0.7, '#d0d0d0');
+                innerGrad.addColorStop(1, '#a0a0a0');
+                ctx.fillStyle = innerGrad;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * 0.1, 0, 2 * Math.PI);
+                ctx.fillStyle = '#444';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            function drawEmptyWheel(cx, cy, radius) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius + 8, 0, 2 * Math.PI);
+                ctx.fillStyle = '#2c2c3e';
+                ctx.fill();
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+                ctx.fillStyle = '#1e2a3a';
+                ctx.fill();
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#888';
+                ctx.font = 'bold 16px "PingFang SC","Microsoft YaHei",sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('请添加菜品', cx, cy);
+                ctx.restore();
+            }
+
+            function renderWheel() {
+                drawWheel(currentRotation);
+                // 非旋转时也更新掠过显示为当前指向（静态）
+                if (!isSpinning) {
+                    updateLivePreview(currentRotation);
+                }
+            }
+
+            // ==================== 权重抽奖（冷却机制保留） ====================
+            function getWeightForDish(dish) {
+                if (dish.lastSelectedSpinIndex === -1) return 1.0;
+                const interval = spinCount - dish.lastSelectedSpinIndex;
+                if (interval <= 1) return 0;
+                return Math.max(0, 1 - 1 / interval);
+            }
+
+            function selectWeightedRandom(candidates) {
+                if (candidates.length === 0) return null;
+                if (candidates.length === 1) return candidates[0];
+
+                const weights = candidates.map(d => getWeightForDish(d));
+                const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+                if (totalWeight <= 0) {
+                    return candidates[Math.floor(Math.random() * candidates.length)];
+                }
+
+                let random = Math.random() * totalWeight;
+                for (let i = 0; i < candidates.length; i++) {
+                    random -= weights[i];
+                    if (random <= 0) return candidates[i];
+                }
+                return candidates[candidates.length - 1];
+            }
+
+            function getTargetRotation(targetIndex) {
+                const n = dishes.length;
+                if (n === 0) return currentRotation;
+                const arcSize = (2 * Math.PI) / n;
+                const sectorCenterLocal = targetIndex * arcSize + arcSize / 2;
+                let targetRot = -Math.PI / 2 - sectorCenterLocal;
+                targetRot = ((targetRot % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+                return targetRot;
+            }
+
+            function spinWheel() {
+                if (isSpinning) return;
+                if (dishes.length < 2) {
+                    showToast('⚠️ 至少需要2个菜品才能抽奖哦~', 'warning');
+                    return;
+                }
+
+                spinCount++;
+                saveSpinCount();
+
+                const availableDishes = dishes.filter(d =>
+                    d.lastSelectedSpinIndex === -1 || (spinCount - d.lastSelectedSpinIndex) > 1
+                );
+
+                if (availableDishes.length === 0) {
+                    dishes.forEach(d => d.lastSelectedSpinIndex = -1);
+                    saveDishes();
+                    showToast('🔄 所有菜品已重置，重新开始抽奖', 'warning');
+                    return spinWheel();
+                }
+
+                const selectedDish = selectWeightedRandom(availableDishes);
+                const targetIndex = dishes.indexOf(selectedDish);
+
+                isSpinning = true;
+                centerBtn.disabled = true;
+                btnAdd.disabled = true;
+                btnImport.disabled = true;
+                btnReset.disabled = true;
+                dishInput.disabled = true;
+                canvas.classList.add('spinning');
+                wheelWrapper.classList.add('spinning');
+
+                const targetRotation = getTargetRotation(targetIndex);
+                const currentNorm = ((currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+                let delta = targetRotation - currentNorm;
+                if (delta < 0) delta += 2 * Math.PI;
+                const extraSpins = (5 + Math.floor(Math.random() * 5)) * 2 * Math.PI;
+                const totalDelta = delta + extraSpins;
+                const startRotation = currentRotation;
+                const endRotation = currentRotation + totalDelta;
+                const duration = 4200 + Math.random() * 800;
+                const startTime = performance.now();
+
+                function animate(timestamp) {
+                    const elapsed = timestamp - startTime;
+                    const progress = Math.min(elapsed / duration, 1.0);
+                    const eased = 1 - Math.pow(1 - progress, 3.5);
+                    currentRotation = startRotation + totalDelta * eased;
+                    drawWheel(currentRotation);
+                    // 实时更新掠过显示
+                    updateLivePreview(currentRotation);
+                    if (progress < 1.0) {
+                        animationId = requestAnimationFrame(animate);
+                    } else {
+                        currentRotation = endRotation;
+                        drawWheel(currentRotation);
+                        onSpinEnd(targetIndex);
+                    }
+                }
+
+                animationId = requestAnimationFrame(animate);
+            }
+
+            function onSpinEnd(targetIndex) {
+                isSpinning = false;
+                animationId = null;
+                centerBtn.disabled = false;
+                btnAdd.disabled = false;
+                btnImport.disabled = false;
+                btnReset.disabled = false;
+                dishInput.disabled = false;
+                canvas.classList.remove('spinning');
+                wheelWrapper.classList.remove('spinning');
+
+                const winner = dishes[targetIndex];
+                winner.lastSelectedSpinIndex = spinCount;
+                saveDishes();
+
+                // 最终结果显示在弹窗和掠过显示中
+                // 掠过显示更新为最终结果
+                updateLivePreview(currentRotation);
+                // 弹窗
+                resultDish.textContent = winner.name;
+                resultMerchant.textContent = winner.merchant ? `🏪 ${winner.merchant}` : '';
+                overlay.style.display = 'flex';
+            }
+
+            // ==================== 添加菜品 ====================
+            function addDish() {
+                if (isSpinning) return;
+                const name = dishInput.value.trim();
+                if (!name) {
+                    showToast('⚠️ 请输入菜品名称', 'warning');
+                    dishInput.focus();
+                    return;
+                }
+                if (dishes.some(d => d.name === name && d.merchant === '自定义')) {
+                    showToast('⚠️ 该菜品已存在（自定义）', 'warning');
+                    dishInput.focus();
+                    return;
+                }
+                if (dishes.length >= MAX_DISHES) {
+                    showToast(`⚠️ 已达上限 ${MAX_DISHES} 道菜`, 'warning');
+                    return;
+                }
+                const newDish = {
+                    id: generateId(),
+                    merchant: '自定义',
+                    name: name,
+                    color: getColorForIndex(dishes.length),
+                    lastSelectedSpinIndex: -1,
+                };
+                dishes.push(newDish);
+                saveDishes();
+                renderWheel();
+                dishInput.value = '';
+                dishInput.focus();
+                showToast(`✅ 已添加「${name}」`, 'success');
+            }
+
+            // ==================== 重置默认 ====================
+            function resetDishes() {
+                if (isSpinning) return;
+                if (confirm('确定要恢复为默认菜单吗？当前所有自定义菜品将被替换。')) {
+                    dishes = DEFAULT_ITEMS.map((item, idx) => ({
+                        id: generateId(),
+                        merchant: item.merchant,
+                        name: item.name,
+                        color: getColorForIndex(idx),
+                        lastSelectedSpinIndex: -1,
+                    }));
+                    spinCount = 0;
+                    currentRotation = 0;
+                    saveDishes();
+                    saveSpinCount();
+                    renderWheel();
+                    showToast(`🔄 已恢复默认菜单 (${dishes.length}道菜)`, 'success');
+                }
+            }
+
+            // ==================== Excel 导入 ====================
+            function importFromExcel(file) {
+                if (isSpinning) {
+                    showToast('⚠️ 抽奖进行中，请稍后再试', 'warning');
+                    return;
+                }
+
+                const validTypes = [
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'application/vnd.ms-excel'
+                ];
+                if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+                    showToast('⚠️ 请选择 .xlsx 或 .xls 格式的Excel文件', 'warning');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+                        if (!jsonData || jsonData.length === 0) {
+                            showToast('⚠️ Excel文件中没有数据', 'warning');
+                            return;
+                        }
+
+                        const rawNames = [];
+                        for (let i = 0; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            if (!row || row.length === 0) continue;
+                            const cellValue = row[0];
+                            if (cellValue === undefined || cellValue === null) continue;
+                            const name = String(cellValue).trim();
+                            if (name.length > 0) rawNames.push(name);
+                        }
+
+                        if (rawNames.length === 0) {
+                            showToast('⚠️ 未在Excel第一列中找到任何菜品名称', 'warning');
+                            return;
+                        }
+
+                        let startIndex = 0;
+                        const headerPattern = /^(菜品|名称|菜名|食物|列表|序号|编号|id|name|food|dish|菜单|美食|商家)/i;
+                        if (rawNames.length > 1 && headerPattern.test(rawNames[0])) {
+                            startIndex = 1;
+                            showToast('🔍 已自动跳过表头行', 'success');
+                        }
+
+                        const existingNames = new Set(dishes.map(d => d.name));
+                        let importedCount = 0;
+                        let skippedDuplicate = 0;
+
+                        for (let i = startIndex; i < rawNames.length; i++) {
+                            const name = rawNames[i];
+                            if (dishes.length >= MAX_DISHES) {
+                                showToast(`⚠️ 已达${MAX_DISHES}个菜品上限，部分未导入`, 'warning');
+                                break;
+                            }
+                            if (existingNames.has(name)) {
+                                skippedDuplicate++;
+                                continue;
+                            }
+                            dishes.push({
+                                id: generateId(),
+                                merchant: '自定义',
+                                name: name,
+                                color: getColorForIndex(dishes.length),
+                                lastSelectedSpinIndex: -1,
+                            });
+                            existingNames.add(name);
+                            importedCount++;
+                        }
+
+                        if (importedCount > 0) {
+                            saveDishes();
+                            renderWheel();
+                            let msg = `✅ 成功导入 ${importedCount} 个菜品`;
+                            if (skippedDuplicate > 0) msg += `，跳过 ${skippedDuplicate} 个重复项`;
+                            showToast(msg, 'success');
+                        } else if (skippedDuplicate > 0) {
+                            showToast('⚠️ 所有菜品都已存在，未新增', 'warning');
+                        } else {
+                            showToast('⚠️ 没有可导入的有效菜品', 'warning');
+                        }
+                    } catch (error) {
+                        console.error('Excel解析错误:', error);
+                        showToast('❌ Excel文件解析失败，请检查文件格式', 'warning');
+                    }
+                };
+
+                reader.onerror = function() {
+                    showToast('❌ 文件读取失败', 'warning');
+                };
+
+                reader.readAsArrayBuffer(file);
+            }
+
+            // ==================== 事件绑定 ====================
+            centerBtn.addEventListener('click', () => {
+                if (!isSpinning) spinWheel();
+            });
+
+            btnAdd.addEventListener('click', addDish);
+            dishInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') addDish();
+            });
+
+            btnImport.addEventListener('click', () => {
+                if (isSpinning) {
+                    showToast('⚠️ 抽奖进行中，请稍后再试', 'warning');
+                    return;
+                }
+                excelFileInput.click();
+            });
+
+            excelFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    importFromExcel(file);
+                }
+                excelFileInput.value = '';
+            });
+
+            btnReset.addEventListener('click', resetDishes);
+
+            btnClose.addEventListener('click', () => { overlay.style.display = 'none'; });
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) overlay.style.display = 'none';
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === ' ' && !isSpinning && document.activeElement !== dishInput &&
+                    document.activeElement?.tagName !== 'INPUT') {
+                    e.preventDefault();
+                    spinWheel();
+                }
+                if (e.key === 'Escape' && overlay.style.display === 'flex') {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            canvas.addEventListener('click', (e) => {
+                if (isSpinning) return;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2;
+                const clickX = (e.clientX - rect.left) * scaleX;
+                const clickY = (e.clientY - rect.top) * scaleY;
+                const dist = Math.sqrt((clickX - cx) ** 2 + (clickY - cy) ** 2);
+                const radius = canvas.width / 2 - 12;
+                if (dist < radius && dist > radius * 0.3) {
+                    spinWheel();
+                }
+            });
+
+            function escapeHTML(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            // ==================== 初始化 ====================
+            function init() {
+                loadSpinCount();
+                loadDishes();
+                currentRotation = 0;
+                renderWheel();
+                // 初始显示占位
+                resetLivePreview();
+            }
+
+            init();
+
+            let resizeDebounce;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeDebounce);
+                resizeDebounce = setTimeout(() => {
+                    renderWheel();
+                }, 200);
+            });
+
+            console.log(`🍽️ 今天吃什么 · 转盘已就绪！当前菜品数：${dishes.length}，支持上限：${MAX_DISHES}`);
+        })();
+    </script>
+</body>
+</html>

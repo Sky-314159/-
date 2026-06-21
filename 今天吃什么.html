@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🍽️ 今天吃什么</title>
+    <title>🍽️ 今天吃什么 · 转盘</title>
     <!-- SheetJS 用于解析 Excel -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js">
     </script>
@@ -125,18 +125,6 @@
             50% {
                 background-position: 100% 50%;
             }
-        }
-        .header .subtitle {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            letter-spacing: 0.06em;
-        }
-        .header .subtitle span {
-            background: rgba(240, 165, 0, 0.15);
-            padding: 0 10px;
-            border-radius: 20px;
-            color: #f0a500;
-            font-weight: 600;
         }
 
         /* 转盘区域 */
@@ -328,6 +316,7 @@
             align-items: center;
             justify-content: center;
             gap: 6px;
+            flex-wrap: wrap;
             transition: all 0.1s;
         }
         .live-preview .highlight {
@@ -340,7 +329,8 @@
         }
         .live-preview .merchant-tag {
             color: #ffbb33;
-            font-size: 0.85rem;
+            font-weight: 600;
+            font-size: 0.9rem;
         }
 
         .action-row {
@@ -506,9 +496,9 @@
             margin: 6px 0 4px;
         }
         .modal .result-merchant {
-            font-size: 1rem;
+            font-size: 1.1rem;
             color: #ffbb33;
-            font-weight: 500;
+            font-weight: 700;
             margin-bottom: 12px;
         }
         .modal .btn-close {
@@ -584,7 +574,7 @@
                 font-size: 1.3rem;
             }
             .modal .result-merchant {
-                font-size: 0.9rem;
+                font-size: 1rem;
             }
             .live-preview {
                 font-size: 0.85rem;
@@ -600,7 +590,6 @@
         <div class="header">
             <span class="icon">🍽️</span>
             <h1>今天吃什么</h1>
-            <span class="subtitle">转盘决定 · <span>掠过即见</span></span>
         </div>
 
         <div class="wheel-wrapper" id="wheelWrapper">
@@ -663,8 +652,8 @@
             const liveDishName = document.getElementById('liveDishName');
             const liveMerchantName = document.getElementById('liveMerchantName');
 
-            // ==================== 默认菜品（带商家） ====================
-           const DEFAULT_ITEMS = [
+            // ==================== 🏫 完整默认菜单（根据Excel生成） ====================
+            const DEFAULT_ITEMS = [
                 // 张大厨辣椒炒肉 (26)
                 { merchant: '张大厨辣椒炒肉', name: '临沂炒鸡' },
                 { merchant: '张大厨辣椒炒肉', name: '孜然牛肉饭' },
@@ -1155,22 +1144,15 @@
                 }
                 const n = dishes.length;
                 const arcSize = (2 * Math.PI) / n;
-                // 指针方向固定为 -PI/2 (12点钟方向)
                 const pointerAngle = -Math.PI / 2;
-                // 计算相对于旋转起始的偏移
                 let angle = (pointerAngle - rotationRad + 2 * Math.PI) % (2 * Math.PI);
                 let index = Math.floor(angle / arcSize) % n;
                 if (index < 0) index += n;
                 const dish = dishes[index];
                 liveDishName.textContent = dish.name;
-                if (dish.merchant && dish.merchant !== '自定义') {
-                    liveMerchantName.textContent = ' 🏪 ' + dish.merchant;
-                } else {
-                    liveMerchantName.textContent = '';
-                }
+                liveMerchantName.textContent = ` 🏪 ${dish.merchant}`;
             }
 
-            // 重置显示为占位符
             function resetLivePreview() {
                 liveDishName.textContent = '—';
                 liveMerchantName.textContent = '';
@@ -1253,7 +1235,7 @@
                     ctx.restore();
                 }
 
-                // 文字（只显示菜品名）
+                // 文字
                 let fontSize = 12;
                 if (n > 30) fontSize = 10;
                 if (n > 50) fontSize = 8;
@@ -1353,13 +1335,12 @@
 
             function renderWheel() {
                 drawWheel(currentRotation);
-                // 非旋转时也更新掠过显示为当前指向（静态）
                 if (!isSpinning) {
                     updateLivePreview(currentRotation);
                 }
             }
 
-            // ==================== 权重抽奖（冷却机制保留） ====================
+            // ==================== 权重抽奖 ====================
             function getWeightForDish(dish) {
                 if (dish.lastSelectedSpinIndex === -1) return 1.0;
                 const interval = spinCount - dish.lastSelectedSpinIndex;
@@ -1446,7 +1427,6 @@
                     const eased = 1 - Math.pow(1 - progress, 3.5);
                     currentRotation = startRotation + totalDelta * eased;
                     drawWheel(currentRotation);
-                    // 实时更新掠过显示
                     updateLivePreview(currentRotation);
                     if (progress < 1.0) {
                         animationId = requestAnimationFrame(animate);
@@ -1475,12 +1455,9 @@
                 winner.lastSelectedSpinIndex = spinCount;
                 saveDishes();
 
-                // 最终结果显示在弹窗和掠过显示中
-                // 掠过显示更新为最终结果
                 updateLivePreview(currentRotation);
-                // 弹窗
                 resultDish.textContent = winner.name;
-                resultMerchant.textContent = winner.merchant ? `🏪 ${winner.merchant}` : '';
+                resultMerchant.textContent = `🏪 ${winner.merchant}`;
                 overlay.style.display = 'flex';
             }
 
@@ -1514,7 +1491,7 @@
                 renderWheel();
                 dishInput.value = '';
                 dishInput.focus();
-                showToast(`✅ 已添加「${name}」`, 'success');
+                showToast(`✅ 已添加「${name}」 (自定义)`, 'success');
             }
 
             // ==================== 重置默认 ====================
@@ -1537,7 +1514,7 @@
                 }
             }
 
-            // ==================== Excel 导入 ====================
+            // ==================== 📥 Excel 导入（支持商家+菜品双列） ====================
             function importFromExcel(file) {
                 if (isSpinning) {
                     showToast('⚠️ 抽奖进行中，请稍后再试', 'warning');
@@ -1567,50 +1544,55 @@
                             return;
                         }
 
-                        const rawNames = [];
-                        for (let i = 0; i < jsonData.length; i++) {
-                            const row = jsonData[i];
-                            if (!row || row.length === 0) continue;
-                            const cellValue = row[0];
-                            if (cellValue === undefined || cellValue === null) continue;
-                            const name = String(cellValue).trim();
-                            if (name.length > 0) rawNames.push(name);
-                        }
-
-                        if (rawNames.length === 0) {
-                            showToast('⚠️ 未在Excel第一列中找到任何菜品名称', 'warning');
-                            return;
-                        }
-
-                        let startIndex = 0;
-                        const headerPattern = /^(菜品|名称|菜名|食物|列表|序号|编号|id|name|food|dish|菜单|美食|商家)/i;
-                        if (rawNames.length > 1 && headerPattern.test(rawNames[0])) {
-                            startIndex = 1;
+                        // 检测表头：如果第一行包含“商家”和“菜品”关键词，则跳过
+                        let startRow = 0;
+                        const headerRow = jsonData[0] || [];
+                        const headerStr = headerRow.join(' ').toLowerCase();
+                        const isHeader = /商家/.test(headerStr) && /菜品/.test(headerStr);
+                        if (isHeader) {
+                            startRow = 1;
                             showToast('🔍 已自动跳过表头行', 'success');
                         }
 
-                        const existingNames = new Set(dishes.map(d => d.name));
+                        // 读取数据
                         let importedCount = 0;
                         let skippedDuplicate = 0;
+                        // 使用 Set 记录已存在的 (商家+菜品) 组合
+                        const existingKeySet = new Set(dishes.map(d => `${d.merchant}|${d.name}`));
 
-                        for (let i = startIndex; i < rawNames.length; i++) {
-                            const name = rawNames[i];
+                        for (let i = startRow; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            if (!row || row.length === 0) continue;
+
+                            let merchant = String(row[0] || '').trim();
+                            let name = String(row[1] || '').trim();
+
+                            // 如果第一列有值但第二列为空，则尝试只取第一列作为菜品名，商家设为“自定义”
+                            if (!name && merchant) {
+                                name = merchant;
+                                merchant = '自定义';
+                            }
+
+                            if (!name) continue; // 跳过无效行
+
+                            const key = `${merchant}|${name}`;
+                            if (existingKeySet.has(key)) {
+                                skippedDuplicate++;
+                                continue;
+                            }
                             if (dishes.length >= MAX_DISHES) {
                                 showToast(`⚠️ 已达${MAX_DISHES}个菜品上限，部分未导入`, 'warning');
                                 break;
                             }
-                            if (existingNames.has(name)) {
-                                skippedDuplicate++;
-                                continue;
-                            }
+
                             dishes.push({
                                 id: generateId(),
-                                merchant: '自定义',
+                                merchant: merchant || '自定义',
                                 name: name,
                                 color: getColorForIndex(dishes.length),
                                 lastSelectedSpinIndex: -1,
                             });
-                            existingNames.add(name);
+                            existingKeySet.add(key);
                             importedCount++;
                         }
 
@@ -1710,7 +1692,6 @@
                 loadDishes();
                 currentRotation = 0;
                 renderWheel();
-                // 初始显示占位
                 resetLivePreview();
             }
 
